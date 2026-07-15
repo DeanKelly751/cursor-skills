@@ -20,18 +20,9 @@ Don't re-derive review criteria — this repo already has detailed, severity-rat
 
 ## Requirements
 
-This skill reads sibling skill files at review time, so it only works when the following are present relative to this skill's location (they already are, in this repo):
+This skill reads sibling reviewer skill files at review time. It discovers them automatically by globbing for `reviewers/review-*/SKILL.md` — no hardcoded list to maintain. If no reviewer files are found, tell the user the `reviewers/` directory is missing and stop.
 
-- `reviewers/review-api/SKILL.md`
-- `reviewers/review-security/SKILL.md`
-- `reviewers/review-database/SKILL.md`
-- `reviewers/review-accessibility/SKILL.md`
-- `reviewers/review-ux/SKILL.md`
-- `reviewers/review-performance/SKILL.md`
-- `reviewers/review-architecture/SKILL.md`
-- `reviewers/review-production-readiness/SKILL.md`
-
-If copying only `self-review/SKILL.md` into another project, copy the `reviewers/` directory alongside it, or this skill has nothing to load.
+If copying only `self-review/SKILL.md` into another project, copy the `reviewers/` directory alongside it, or this skill has nothing to discover.
 
 ## Workflow
 
@@ -67,39 +58,45 @@ git diff <base>...HEAD --name-status
 git diff <base>...HEAD
 ```
 
-### Step 3: Route Files to Reviewers
+### Step 3: Discover Available Reviewers
 
-Apply this mapping to the changed file list. A file can match multiple rows — include every matching reviewer.
+Use `Glob` for `reviewers/review-*/SKILL.md` to find all installed reviewers. Extract reviewer names from the paths (e.g. `reviewers/review-security/SKILL.md` -> `review-security`). If no results, tell the user the `reviewers/` directory is missing and stop.
+
+### Step 4: Route Files to Reviewers
+
+Apply this mapping to the changed file list, but **only route to reviewers that were discovered in Step 3** — skip any row that references a reviewer not found by the glob. A file can match multiple rows; include every matching reviewer.
 
 | Signal (path or content pattern) | Reviewer to load |
 |---|---|
-| `**/api/**`, `**/routes/**`, `**/controllers/**`, `*.proto`, OpenAPI/GraphQL schema files | `reviewers/review-api` |
-| `**/auth/**`, `**/middleware/**`, files touching secrets, env vars, user input parsing, crypto | `reviewers/review-security` |
-| `**/migrations/**`, `*.sql`, schema/model definition files | `reviewers/review-database` |
-| `*.tsx`, `*.jsx`, `*.vue`, `**/components/**` | `reviewers/review-accessibility`, `reviewers/review-ux` |
-| Hot-path code, query loops, new caching layers, N+1-prone code | `reviewers/review-performance` |
-| New services, `Dockerfile`, `**/infra/**`, deploy/CI config, significant structural changes | `reviewers/review-architecture`, `reviewers/review-production-readiness` |
+| `**/api/**`, `**/routes/**`, `**/controllers/**`, `*.proto`, OpenAPI/GraphQL schema files | `review-api` |
+| `**/auth/**`, `**/middleware/**`, files touching secrets, env vars, user input parsing, crypto | `review-security` |
+| `**/migrations/**`, `*.sql`, schema/model definition files | `review-database` |
+| `*.tsx`, `*.jsx`, `*.vue`, `**/components/**` | `review-accessibility`, `review-ux` |
+| Hot-path code, query loops, new caching layers, N+1-prone code | `review-performance` |
+| New services, `Dockerfile`, `**/infra/**`, deploy/CI config, significant structural changes | `review-architecture`, `review-production-readiness` |
 
-If nothing matches any row, still run a lightweight pass with `reviewers/review-architecture` as a structural sanity fallback — never skip review entirely.
+If a discovered reviewer doesn't appear in this table, still include it with a lightweight pass — it was installed for a reason.
+
+If nothing matches any row, fall back to `review-architecture` (if discovered) as a structural sanity check — never skip review entirely.
 
 Present the routing decision briefly before proceeding, e.g.:
 
 ```
-Routing 6 changed files -> review-api, review-security (auth middleware touched), review-database (1 migration)
+Discovered 8 reviewers. Routing 6 changed files -> review-api, review-security (auth middleware touched), review-database (1 migration)
 ```
 
-### Step 4: Load Each Applicable Checklist
+### Step 5: Load Each Applicable Checklist
 
-For every reviewer selected in Step 3, `Read` its `SKILL.md` file in full to pull its checklist tables, severity levels, and output format. Do this for all selected reviewers before evaluating — don't interleave loading and evaluating.
+For every reviewer selected in Step 4, `Read` its `SKILL.md` file in full to pull its checklist tables, severity levels, and output format. Do this for all selected reviewers before evaluating — don't interleave loading and evaluating.
 
-### Step 5: Apply Checklists to the Diff
+### Step 6: Apply Checklists to the Diff
 
 For each check in each loaded checklist:
 - Use the diff to identify candidate locations.
 - `Read` the full changed file (not just the diff hunk) when context beyond the hunk is needed to judge a check correctly (e.g. checking whether an endpoint enforces auth requires seeing the surrounding route setup, not just the changed lines).
 - Only report a finding if the check is actually violated by this diff — do not flag pre-existing issues in untouched code unless they are directly relevant to the change (e.g. a new caller of an already-insecure function).
 
-### Step 6: Produce One Consolidated Report
+### Step 7: Produce One Consolidated Report
 
 Reuse the severity vocabulary (CRITICAL / WARNING / SUGGESTION) and per-finding format already used by the loaded reviewers. Merge everything into a single report:
 
@@ -135,7 +132,7 @@ Reuse the severity vocabulary (CRITICAL / WARNING / SUGGESTION) and per-finding 
 
 If a reviewer's checklist produced zero findings, still list it in "Reviewers applied" with a "no issues found" note — this shows the coverage, not just the problems.
 
-### Step 7: Offer Next Step
+### Step 8: Offer Next Step
 
 ```
 AskQuestion:
@@ -155,10 +152,10 @@ If "Fix the straightforward ones for me", only apply fixes that are unambiguous 
 
 - **No changes to review**: tell the user rather than producing an empty report.
 - **Diff too large for careful review**: warn the user and offer to review file-by-file or module-by-module instead of everything at once.
-- **A matched reviewer file is missing**: skip it, note the gap in the report ("review-performance skipped — reviewers/review-performance/SKILL.md not found"), and continue with the others.
+- **A routed reviewer wasn't discovered**: skip that row in the routing table, note the gap in the report (e.g. "review-performance not installed — skipped"), and continue with the others.
 
 ## Important Notes
 
 - This complements, not replaces, human code review — say so in the report if the user seems to be treating it as a substitute for peer review.
 - Findings should cite the exact file and line where possible, mirroring the loaded reviewers' own output format.
-- Keep the routing table in Step 3 in sync if new `reviewers/review-*` skills are added to this repo later.
+- New reviewers added to `reviewers/` are picked up automatically via the Step 3 glob — no need to update this skill. The routing table in Step 4 can optionally be extended with signal patterns for new reviewers, but undiscovered reviewers still get a lightweight pass.
