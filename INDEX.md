@@ -163,6 +163,14 @@ A modular, retrieval-optimized knowledge base for AI coding agents building prod
 | review-ux | Reviewer | Critique user experience and interaction design |
 | review-production-readiness | Reviewer | Assess readiness for production deployment |
 
+### Intern Productivity (`engineering-journal/`, `code-explainer/`, `question-formatter/`, `one-on-one-prep/`)
+| Skill | Type | Summary |
+|-------|------|---------|
+| engineering-journal | Execution | Log debug sessions, learnings, and end-of-day reflections into a weekly journal |
+| code-explainer | Execution | Explain code at any scope — file, directory, or full repo — with multiple depth modes |
+| question-formatter | Execution | Turn vague problems into structured, answerable technical questions |
+| one-on-one-prep | Execution | Prepare for 1:1 meetings with auto-pulled activity and guided reflection |
+
 ## Usage
 
 Skills are loaded individually by AI agents based on task context. Each skill is self-contained with cross-references to related skills where deeper context is needed.
